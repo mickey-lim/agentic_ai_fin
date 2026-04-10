@@ -1,0 +1,26 @@
+[project]
+name = "agentic-poc"
+version = "0.1.0"
+description = "Agentic AI Orchestration PoC Runtime Skeleton v6"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6.4",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.2.0",
+    "pytest>=8.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.23.0",
+    "langchain-google-genai>=1.0.0",
+    "python-dotenv>=1.0.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "langgraph-checkpoint-sqlite",
+    "aiosqlite",
+    "PyJWT",
+    "slowapi",
+    "pytest-asyncio"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

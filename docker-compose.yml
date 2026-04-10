@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - CHECKPOINT_DB_PATH=/data/agentic_state.db
+      - REGISTRY_DB_PATH=/data/agentic_registry.db
+    volumes:
+      - agentic_db_data:/data
+      - ./artifacts:/app/artifacts 
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  agentic_db_data:
