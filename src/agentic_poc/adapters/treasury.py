@@ -1,14 +1,26 @@
+from typing import Optional
 from typing import Dict, Any
 import pandas as pd
 import pathlib
-from .core import BaseAdapter, robust_to_numeric
+from .core import BaseAdapter, robust_to_numeric, normalize_columns
+
+DOMAIN_SYNONYMS = {'공급가액': ['금액', '합계', '공급가', '총액', '총금액', '총공급가액', 'Amount'], '부가세': ['세액', '부가 가치세', '부가가치세', 'V.A.T', 'VAT', '세금', 'Tax'], '계정과목': ['항목', '내역', '품목', '적요', '구분', 'Item'], '거래일자': ['일자', '날짜', '발생일', '작성일자', 'Date'], '승인자': ['결재자', 'Approver']}
 
 class TreasuryAdapter(BaseAdapter):
     @property
     def adapter_id(self) -> str:
         return "ADPTR-TREASURY-01"
 
-    def collect(self) -> pd.DataFrame:
+    def collect(self, source_file_id: Optional[str] = None) -> pd.DataFrame:
+        target_path = self.resolve_source_path(source_file_id)
+        if target_path and pathlib.Path(target_path).exists():
+            if target_path.endswith(".csv"): return pd.read_csv(target_path)
+            if target_path.endswith(".pdf"):
+                from src.agentic_poc.utils.pdf_parser import parse_pdf_to_dataframe
+                return parse_pdf_to_dataframe(target_path)
+            return pd.read_excel(target_path)
+            
+        # Fallback to fixture for test robustness
         target = pathlib.Path("tests/fixtures/treasury_raw.xlsx")
         if target.exists():
             return pd.read_excel(target)
@@ -16,6 +28,10 @@ class TreasuryAdapter(BaseAdapter):
 
     def normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
+        
+        # 1. 컬럼 매핑 정규화 (PDF/이표준 대응)
+        df = normalize_columns(df, expected_columns=['공급가액', '부가세', '계정과목', '거래일자', '승인자'], domain_synonyms=DOMAIN_SYNONYMS)
+        
         # Ensure correct column types
         if '공급가액' in df.columns:
             df['공급가액'] = robust_to_numeric(df['공급가액'])

@@ -57,12 +57,22 @@ def worker_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                         evidence_dir = pathlib.Path("./artifacts/evidence")
                         evidence_dir.mkdir(parents=True, exist_ok=True)
                         
-                        df = adapter.collect()
+                        source_file_id = state.get("source_file_id")
+                        df = adapter.collect(source_file_id)
                         df.to_excel(target_file, index=False)
                         
                         output_data["collected_path"] = str(target_file)
                         evidence_list.append(str(target_file))
-                        output_data["provenance"] = {"adapter": adapter.adapter_id, "operation": "collect"}
+                        parser_type = getattr(df, "attrs", {}).get("parser_type", "excel/csv")
+                        
+                        # Preserve existing provenance, update with sequence logic
+                        current_prov = dict(state.get("provenance", {}))
+                        current_prov.update({
+                            "adapter": adapter.adapter_id, 
+                            "operation": "collect",
+                            "parser_type": parser_type
+                        })
+                        output_data["provenance"] = current_prov
                         
                     elif t["task_type"] == "normalize":
                         # Needs previous collect to run
@@ -78,7 +88,9 @@ def worker_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                         
                         output_data["normalized_path"] = str(norm_target)
                         evidence_list.append(str(norm_target))
-                        output_data["provenance"] = {"adapter": adapter.adapter_id, "operation": "normalize"}
+                        current_prov = dict(state.get("provenance", {}))
+                        current_prov.update({"adapter": adapter.adapter_id, "operation": "normalize"})
+                        output_data["provenance"] = current_prov
 
                     elif t["task_type"] == "draft":
                         if "force_fail" in state.get("input_request", ""):
@@ -112,7 +124,9 @@ def worker_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                                 
                             output_data["draft_summary"] = draft_res
                             evidence_list.append(str(draft_target))
-                            output_data["provenance"] = {"adapter": adapter.adapter_id, "operation": "draft"}
+                            current_prov = dict(state.get("provenance", {}))
+                            current_prov.update({"adapter": adapter.adapter_id, "operation": "draft"})
+                            output_data["provenance"] = current_prov
 
                         if t["ai_type"] == AIType.AI_ASSISTED.value and status != Status.FAILED.value:
                             status = Status.PARTIAL.value
@@ -149,7 +163,9 @@ def worker_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                         output_data["report_path"] = str(report_file)
                         evidence_list.append(str(package_file))
                         evidence_list.append(str(report_file))
-                        output_data["provenance"] = {"adapter": adapter.adapter_id, "operation": "package"}
+                        current_prov = dict(state.get("provenance", {}))
+                        current_prov.update({"adapter": adapter.adapter_id, "operation": "package"})
+                        output_data["provenance"] = current_prov
 
                 except Exception as e:
                     status = Status.FAILED.value

@@ -17,3 +17,9 @@ __pycache__/
 # Local Data and Artifacts
 artifacts/
 scratch/
+
+venv/
+*.db
+*.db-shm
+*.db-wal
+sample_sales_data.xlsx

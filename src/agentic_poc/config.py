@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     """
     Centralized Configuration loading from .env or OS environment variables.
     """
+    # Environment
+    APP_ENV: str = Field(default="local", description="'local' or 'prod'")
+    
     # Core API Keys
     GOOGLE_API_KEY: str = Field(default="")
     
@@ -21,6 +24,8 @@ class Settings(BaseSettings):
     # Persistence
     CHECKPOINT_DB_PATH: str = Field(default="agentic_state.db")
     REGISTRY_DB_PATH: str = Field(default="agentic_registry.db")
+    REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    CELERY_TASK_ALWAYS_EAGER: bool = Field(default=False)
     
     model_config = SettingsConfigDict(
         env_file=".env",

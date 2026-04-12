@@ -1,3 +1,4 @@
+from typing import Optional
 from .core import BaseAdapter
 from .treasury import TreasuryAdapter
 from .withholding import WithholdingAdapter

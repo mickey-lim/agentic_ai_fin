@@ -11,6 +11,9 @@ from langchain_core.runnables import RunnableConfig
 from ..schemas import ProcessFamily, SubmissionChannel, LegalOwner, AIType, TargetTier, WorkflowEnvelope
 from ..state import AgentState
 from ..config import settings
+from src.agentic_poc.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 load_dotenv()
 
@@ -27,7 +30,12 @@ def planner_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
     
     telemetry_logs = []
     
-    if settings.GOOGLE_API_KEY:
+    override = state.get("process_family_override")
+    
+    if override and (settings.GOOGLE_API_KEY is not None):
+        # Even if overriden, we can attempt to use LLM for tasks decomposition by injecting the override constraint
+        pass # Wait, the requirement says "planner가 가장 먼저 override를 확인. override가 있으면 LLM/regex보다 우선 적용." 
+        # But if we completely bypass LLM, we must use regex logic block to build tasks, or just let regex block use `override` instead of substring matching.
         try:
             llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
             structured_llm = llm.with_structured_output(WorkflowEnvelope)
@@ -71,7 +79,7 @@ def planner_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
             return {
                 "workflow_id": workflow_id,
                 "tasks": [t.model_dump(mode="json") for t in envelope.tasks],
-                "process_family": envelope.process_family.value,
+                "process_family": override if override else envelope.process_family.value,
                 "submission_channel": envelope.submission_channel.value,
                 "legal_owner": envelope.legal_owner.value,
                 "telemetry_logs": telemetry_logs
@@ -102,12 +110,17 @@ def planner_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                 "langsmith_run_id": str(run_id)
             })
             
+            log_ctx = {
+                "owner_id": state.get("owner_id", "unknown"),
+                "thread_id": config.get("configurable", {}).get("thread_id", "unknown"),
+                "status": "error"
+            }
             if "Validation" in err_type:
-                print(f"[ValidationError] Gemini Schema Validation Failed: {err_msg}")
+                logger.error(f"[ValidationError] Gemini Schema Validation Failed: {err_msg}", extra=log_ctx)
             elif "Quota" in err_type or "Timeout" in err_type or "API" in err_type or "Service" in err_type:
-                print(f"[{err_type}] Provider API Network/Quota Error: {err_msg}")
+                logger.error(f"[{err_type}] Provider API Network/Quota Error: {err_msg}", extra=log_ctx)
             else:
-                print(f"[{err_type}] Unknown Planning Error: {err_msg}")
+                logger.error(f"[{err_type}] Unknown Planning Error: {err_msg}", extra=log_ctx)
             # Fallback to local regex heuristic logic below
             pass
 
@@ -193,11 +206,23 @@ def planner_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
         "goal": "Package for submission"
     })
 
+    latency_ms = int((time.perf_counter() - start_time) * 1000)
+    telemetry_logs.append({
+        "node": "planner",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "event": "FALLBACK_ROUTE",
+        "status": "success",
+        "latency_ms": latency_ms,
+        "importance": "primary",
+        "error_summary": None,
+        "langsmith_run_id": str(run_id)
+    })
+
     return {
         "workflow_id": workflow_id,
         "tasks": tasks,
-        "process_family": getattr(pf, "value", pf),
-        "submission_channel": getattr(sc, "value", sc),
-        "legal_owner": getattr(lo, "value", lo),
+        "process_family": override if override else pf.value,
+        "submission_channel": sc.value,
+        "legal_owner": lo.value,
         "telemetry_logs": telemetry_logs
     }

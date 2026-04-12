@@ -32,10 +32,10 @@ async def test_authz_invalid_token_blocked():
 @pytest.mark.asyncio
 async def test_ownership_isolation(token_alice, token_bob):
     from src.agentic_poc.graph import build_graph
-    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    from src.agentic_poc.database import get_checkpointer
     
-    async with AsyncSqliteSaver.from_conn_string(":memory:") as memory:
-        # Mock lifespan completion manually for test
+    async with get_checkpointer() as memory:
+        # Mock lifespan completion manually for test but use the SAME checkpoint DB as eager Celery
         app.state.graph = build_graph().compile(checkpointer=memory, interrupt_before=["human_review"])
         
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:

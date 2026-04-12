@@ -30,11 +30,17 @@ async def sync_registry_state(app_graph, thread_id: str) -> None:
         last_error=vals.get("fatal_error", "")
     )
 
-async def start_workflow(app_graph, input_request: str, thread_id: str, owner_id: str) -> None:
+async def start_workflow(app_graph, input_request: str, thread_id: str, owner_id: str, source_file_id: Optional[str] = None, **kwargs) -> None:
     config = {"configurable": {"thread_id": thread_id}}
     initial_state = {
         "input_request": input_request,
         "owner_id": owner_id,
+        "workflow_id": "",
+        "process_family": "",
+        "submission_channel": "",
+        "legal_owner": "",
+        "source_file_id": source_file_id,
+        "process_family_override": kwargs.get("process_family_override"),
         "tasks": [],
         "results": [],
         "error_count": 0,
@@ -60,7 +66,7 @@ async def get_thread_state(app_graph, thread_id: str) -> Dict[str, Any]:
     state_tuple = await app_graph.aget_state(config)
     
     if not state_tuple:
-        return {"is_interrupted": False, "values": {}, "next": []}
+        return {"is_interrupted": False, "values": {"results": []}, "next": []}
         
     res = {
         "is_interrupted": len(state_tuple.next) > 0 and "human_review" in state_tuple.next,

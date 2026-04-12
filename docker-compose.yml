@@ -1,32 +1,81 @@
-version: "3.9"
-
 services:
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - ALLOWED_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:3001","http://127.0.0.1:3001"]
+      - REDIS_URL=redis://redis:6379/0
       - CHECKPOINT_DB_PATH=/data/agentic_state.db
       - REGISTRY_DB_PATH=/data/agentic_registry.db
     volumes:
-      - agentic_db_data:/data
+      - ./:/data
       - ./artifacts:/app/artifacts 
+    depends_on:
+      redis:
+        condition: service_healthy
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       - backend
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.agentic_poc.application.celery_app worker --loglevel=info --concurrency=1 --max-tasks-per-child=50
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
+      - CHECKPOINT_DB_PATH=/data/agentic_state.db
+      - REGISTRY_DB_PATH=/data/agentic_registry.db
+    volumes:
+      - ./:/data
+      - ./artifacts:/app/artifacts 
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A src.agentic_poc.application.celery_app beat --loglevel=info
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - REDIS_URL=redis://redis:6379/0
+      - REGISTRY_DB_PATH=/data/agentic_registry.db
+    volumes:
+      - ./:/data
+      - ./artifacts:/app/artifacts 
+    depends_on:
+      redis:
+        condition: service_healthy
+
 volumes:
-  agentic_db_data:
+  redis_data:
