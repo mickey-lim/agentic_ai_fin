@@ -34,7 +34,7 @@ export default function BoardPage() {
 
   // Start workflow form
   const [inputRequest, setInputRequest] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedHistoryFile, setSelectedHistoryFile] = useState<{file_id: string, original_filename: string, size_bytes: number} | null>(null);
   const [processFamilyOverride, setProcessFamilyOverride] = useState<string>("auto");
   const [isStarting, setIsStarting] = useState(false);
@@ -321,41 +321,43 @@ export default function BoardPage() {
     setErrorMsg(null);
 
     try {
-      let source_file_id = undefined;
+      const source_file_ids: string[] = [];
       
-      if (selectedFile) {
-        const formData = new FormData();
-        formData.append("file", selectedFile);
-        const upRes = await fetch(`${API_BASE}/workflows/upload`, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`
-          },
-          body: formData
-        });
-        
-        if (!upRes.ok) {
-          try {
-            const errBody = await upRes.json();
-            throw new Error(`File upload failed: ${errBody.detail || 'Unknown error'}`);
-          } catch {
-            throw new Error(`File upload failed with status ${upRes.status}`);
-          }
+      if (selectedFiles.length > 0) {
+        for (const file of selectedFiles) {
+            const formData = new FormData();
+            formData.append("file", file);
+            const upRes = await fetch(`${API_BASE}/workflows/upload`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${token}`
+              },
+              body: formData
+            });
+            
+            if (!upRes.ok) {
+              try {
+                const errBody = await upRes.json();
+                throw new Error(`File upload failed for ${file.name}: ${errBody.detail || 'Unknown error'}`);
+              } catch {
+                throw new Error(`File upload failed for ${file.name} with status ${upRes.status}`);
+              }
+            }
+            
+            const upData = await upRes.json();
+            source_file_ids.push(upData.file_id);
         }
-        
-        const upData = await upRes.json();
-        source_file_id = upData.file_id;
         fetchRecentUploads();
       } else if (selectedHistoryFile) {
-        source_file_id = selectedHistoryFile.file_id;
+        source_file_ids.push(selectedHistoryFile.file_id);
       }
 
       const payload: {
         input_request: string;
-        source_file_id?: string;
+        source_file_ids?: string[];
         process_family_override?: string;
       } = { input_request: inputRequest };
-      if (source_file_id) payload.source_file_id = source_file_id;
+      if (source_file_ids.length > 0) payload.source_file_ids = source_file_ids;
       if (processFamilyOverride !== "auto") payload.process_family_override = processFamilyOverride;
 
       const res = await fetch(`${API_BASE}/workflows/start`, {
@@ -371,7 +373,7 @@ export default function BoardPage() {
 
       const data = await res.json();
       setInputRequest("");
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setSelectedHistoryFile(null);
       // Immediately refresh queue to show the new record
       fetchQueue(true);
@@ -470,7 +472,7 @@ export default function BoardPage() {
                                     className="px-3 py-2 border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                     onClick={() => {
                                         setSelectedHistoryFile(up);
-                                        setSelectedFile(null);
+                                        setSelectedFiles([]);
                                         setShowRecentDropdown(false);
                                     }}
                                 >
@@ -490,7 +492,7 @@ export default function BoardPage() {
                             e.preventDefault();
                             setIsDragOver(false);
                             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                                setSelectedFile(e.dataTransfer.files[0]);
+                                setSelectedFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
                             }
                         }}
                         className={`transition-colors rounded-sm ${isDragOver ? "bg-indigo-50 border-2 border-dashed border-indigo-300 p-2 -m-2 mb-1" : ""}`}
@@ -505,7 +507,12 @@ export default function BoardPage() {
                                         type="file"
                                         className="hidden"
                                         accept=".xlsx,.csv,.pdf"
-                                        onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                                        multiple
+                                        onChange={(e) => {
+                                            if (e.target.files) {
+                                                setSelectedFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                                            }
+                                        }}
                                         disabled={isStarting}
                                     />
                                     <Paperclip className="h-4 w-4" />
@@ -539,31 +546,43 @@ export default function BoardPage() {
                                 </button>
                             </div>
 
-                            {selectedFile && (
-                                <div className="flex items-center justify-between border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800 shadow-sm">
-                                    <div className="flex items-center gap-2 overflow-hidden">
-                                        {isStarting ? (
-                                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                                        ) : (
-                                            <Paperclip className="h-3 w-3 shrink-0 text-indigo-500" />
+                            {selectedFiles.length > 0 && (
+                                <div className="flex flex-col gap-1 border border-indigo-100 bg-indigo-50 p-2 text-xs text-indigo-800 shadow-sm">
+                                    <div className="flex justify-between font-semibold border-b border-indigo-100 pb-1 mb-1">
+                                        <span>첨부된 증빙자료 ({selectedFiles.length}건)</span>
+                                        {!isStarting && (
+                                            <button type="button" onClick={() => setSelectedFiles([])} className="text-indigo-600 hover:text-indigo-800 focus:outline-none">
+                                                모두 지우기
+                                            </button>
                                         )}
-                                        <span className="truncate font-medium">{selectedFile.name}</span>
-                                        <span className="shrink-0 text-indigo-400">({(selectedFile.size / 1024).toFixed(1)} KB)</span>
                                     </div>
-                                    {!isStarting && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedFile(null)}
-                                            className="ml-2 shrink-0 text-indigo-400 hover:text-indigo-700 focus:outline-none"
-                                            title="첨부 취소"
-                                        >
-                                            <XCircle className="h-4 w-4" />
-                                        </button>
-                                    )}
+                                    {selectedFiles.map((f, idx) => (
+                                        <div key={idx} className="flex flex-row flex-wrap items-center justify-between pb-1">
+                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                {isStarting ? (
+                                                    <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                                                ) : (
+                                                    <Paperclip className="h-3 w-3 shrink-0 text-indigo-500" />
+                                                )}
+                                                <span className="truncate font-medium">{f.name}</span>
+                                                <span className="shrink-0 text-indigo-400">({(f.size / 1024).toFixed(1)} KB)</span>
+                                            </div>
+                                            {!isStarting && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                                                    className="shrink-0 text-indigo-400 hover:text-indigo-700 focus:outline-none"
+                                                    title="첨부 취소"
+                                                >
+                                                    <XCircle className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
-                            {selectedHistoryFile && !selectedFile && (
+                            {selectedHistoryFile && selectedFiles.length === 0 && (
                                 <div className="flex items-center justify-between border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 shadow-sm">
                                     <div className="flex items-center gap-2 overflow-hidden">
                                         {isStarting ? (
@@ -587,7 +606,7 @@ export default function BoardPage() {
                                 </div>
                             )}
 
-                            {isStarting && (selectedFile || selectedHistoryFile) && (
+                            {isStarting && (selectedFiles.length > 0 || selectedHistoryFile) && (
                                 <p className="animate-pulse text-xs font-medium text-indigo-600">
                                     데이터 업로드 및 워크플로우 대기열 등록 중...
                                 </p>
