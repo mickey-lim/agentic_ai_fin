@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from ..schemas import HumanReviewAction
 from ..registry import upsert_workflow, init_registry
 
@@ -30,7 +30,7 @@ async def sync_registry_state(app_graph, thread_id: str) -> None:
         last_error=vals.get("fatal_error", "")
     )
 
-async def start_workflow(app_graph, input_request: str, thread_id: str, owner_id: str, source_file_id: Optional[str] = None, **kwargs) -> None:
+async def start_workflow(app_graph, input_request: str, thread_id: str, owner_id: str, source_file_ids: List[str] = None, **kwargs) -> None:
     config = {"configurable": {"thread_id": thread_id}}
     initial_state = {
         "input_request": input_request,
@@ -39,7 +39,7 @@ async def start_workflow(app_graph, input_request: str, thread_id: str, owner_id
         "process_family": "",
         "submission_channel": "",
         "legal_owner": "",
-        "source_file_id": source_file_id,
+        "source_file_ids": source_file_ids if source_file_ids is not None else [],
         "process_family_override": kwargs.get("process_family_override"),
         "tasks": [],
         "results": [],

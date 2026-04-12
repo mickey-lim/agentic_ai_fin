@@ -85,7 +85,7 @@ router = APIRouter()
 
 class StartRequest(BaseModel):
     input_request: str = Field(..., max_length=15000)
-    source_file_id: Optional[str] = Field(None, description="Opaque identifier of uploaded file")
+    source_file_ids: Optional[List[str]] = Field(default_factory=list, description="Opaque identifier of uploaded file")
     process_family_override: Optional[str] = Field(None, description="Manual domain override")
 
 class FileUploadResponse(BaseModel):
@@ -162,6 +162,7 @@ async def api_get_uploads(request: Request, user: str = Depends(verify_token)):
         uploads = await get_recent_uploads(user)
         return {"uploads": uploads}
     except Exception as e:
+        import traceback; traceback.print_exc()
         logger.error("UPLOAD ERROR", exc_info=True, extra={"owner_id": user, "status": "error"})
         raise HTTPException(status_code=500, detail="Internal Server Error retrieving uploads")
 
@@ -170,15 +171,16 @@ async def api_get_uploads(request: Request, user: str = Depends(verify_token)):
 async def api_start_workflow(req: StartRequest, request: Request, user: str = Depends(verify_token)):
     try:
         # Validate file ownership if source_file_id provided
-        if req.source_file_id:
-            f_meta = await get_file_metadata(req.source_file_id)
-            if not f_meta:
+        if req.source_file_ids:
+            f_metas = [await get_file_metadata(fid) for fid in req.source_file_ids]
+            if not all(f_metas):
                  raise HTTPException(status_code=404, detail="Source file not found")
-            if f_meta["owner_id"] != user:
+            if any(f["owner_id"] != user for f in f_metas if f):
                  raise HTTPException(status_code=403, detail="Forbidden: File ownership mismatch")
             
             # UX Patch: Update last_used_at when explicitely starting a workflow with an existing file
-            await touch_file_last_used(req.source_file_id)
+            for fid in req.source_file_ids:
+                await touch_file_last_used(fid)
                  
         thread_id = str(uuid.uuid4())
         # Pass user as owner_id
@@ -187,12 +189,12 @@ async def api_start_workflow(req: StartRequest, request: Request, user: str = De
             owner_id=user,
             status="running",
             input_request_summary=req.input_request[:100],
-            source_file_id=req.source_file_id if req.source_file_id else ""
+            source_file_ids=req.source_file_ids if req.source_file_ids else []
         )
         # Dispatch via Celery
         try:
             from src.agentic_poc.application.worker_tasks import task_start_workflow
-            task_start_workflow.delay(req.input_request, thread_id, user, req.source_file_id, req.process_family_override)
+            task_start_workflow.delay(req.input_request, thread_id, user, req.source_file_ids, req.process_family_override)
         except Exception as queue_err:
             await upsert_workflow(
                 thread_id=thread_id,
@@ -207,6 +209,7 @@ async def api_start_workflow(req: StartRequest, request: Request, user: str = De
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @app.get("/workflows", status_code=200)
@@ -233,6 +236,7 @@ async def api_list_workflows(
             
         return {"workflows": results, "next_cursor": next_cursor}
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal Server Error retrieving workflows")
 
 @app.get("/workflows/metrics", status_code=200)
@@ -244,6 +248,7 @@ async def api_get_workflow_metrics(request: Request, response: Response, user: s
         metrics = await get_workflow_metrics(user)
         return metrics
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal Server Error retrieving workflow metrics")
 
 @app.delete("/workflows/{thread_id}", status_code=200)
@@ -260,6 +265,7 @@ async def api_delete_workflow(thread_id: str, request: Request, user: str = Depe
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         logger.error("DELETE ERROR", exc_info=True, extra={"thread_id": thread_id, "owner_id": user, "status": "error"})
         raise HTTPException(status_code=500, detail="Internal Server Error during deletion")
 
@@ -277,6 +283,7 @@ async def api_restore_workflow(thread_id: str, request: Request, user: str = Dep
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         logger.error("RESTORE ERROR", exc_info=True, extra={"thread_id": thread_id, "owner_id": user, "status": "error"})
         raise HTTPException(status_code=500, detail="Internal Server Error during restore")
 
@@ -306,6 +313,7 @@ async def api_batch_operations(req: BatchActionRequest, request: Request, user: 
                 
         return {"results": results}
     except Exception as e:
+        import traceback; traceback.print_exc()
         logger.error("BATCH ERROR", exc_info=True, extra={"owner_id": user, "status": "error"})
         raise HTTPException(status_code=500, detail="Internal Server Error during batch operation")
 
@@ -332,6 +340,7 @@ async def api_get_state(thread_id: str, request: Request, response: Response, us
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=404, detail="State not found")
 
 @app.get("/workflows/{thread_id}/evidence")
@@ -394,6 +403,7 @@ async def api_get_evidence(thread_id: str, request: Request, user: str = Depends
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal Server Error retrieving evidence")
 
 from fastapi.responses import FileResponse
@@ -416,6 +426,7 @@ async def api_download_package(thread_id: str, request: Request, user: str = Dep
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         raise HTTPException(status_code=500, detail="Internal Server Error retrieving package")
 
 @app.post("/workflows/{thread_id}/resume", status_code=202)
@@ -453,5 +464,6 @@ async def api_resume_workflow(thread_id: str, action_data: HumanReviewAction, re
     except HTTPException:
         raise
     except Exception as e:
+        import traceback; traceback.print_exc()
         logger.error("RESUME ERROR", exc_info=True, extra={"thread_id": thread_id, "owner_id": user, "status": "error"})
         raise HTTPException(status_code=400, detail=f"Bad Request: {str(e)}")

@@ -33,7 +33,7 @@ def get_cached_graph():
 
 # --- Async Executors ---
 
-async def async_start_workflow(input_request: str, thread_id: str, owner_id: str, source_file_id: str = None, process_family_override: str = None):
+async def async_start_workflow(input_request: str, thread_id: str, owner_id: str, source_file_ids: list = None, process_family_override: str = None):
     # Idempotency Check
     async with aiosqlite.connect(settings.REGISTRY_DB_PATH) as db:
         async with db.execute("SELECT status FROM workflow_registry WHERE thread_id = ?", (thread_id,)) as cursor:
@@ -60,7 +60,7 @@ async def async_start_workflow(input_request: str, thread_id: str, owner_id: str
             # Graph already has history. This is a duplicate trigger for start.
             return "ABORT_DUPLICATE_STATE_EXISTS"
 
-        await start_workflow(graph, input_request, thread_id, owner_id, source_file_id, process_family_override=process_family_override)
+        await start_workflow(graph, input_request, thread_id, owner_id, source_file_ids, process_family_override=process_family_override)
     return "SUCCESS"
 
 async def async_resume_workflow(thread_id: str, action_data: dict, owner_id: str):
@@ -168,14 +168,14 @@ async def async_cleanup_artifacts():
 # --- Celery Task Wrappers ---
 
 @app.task(bind=True, max_retries=3)
-def task_start_workflow(self, input_request: str, thread_id: str, owner_id: str, source_file_id: str = None, process_family_override: str = None):
+def task_start_workflow(self, input_request: str, thread_id: str, owner_id: str, source_file_ids: list = None, process_family_override: str = None):
     """
     Celery task entrypoint to start a new LangGraph workflow execution.
     Runs asynchronously on Celery Worker daemon, detached from FastAPI blocking loop.
     Includes Idempotency checks to prevent duplicate graph initialization.
     """
     logger.info("Worker processing 'task_start_workflow'", extra={"thread_id": thread_id, "owner_id": owner_id, "event": "worker_start", "status": "running"})
-    res = asyncio.run(async_start_workflow(input_request, thread_id, owner_id, source_file_id, process_family_override))
+    res = asyncio.run(async_start_workflow(input_request, thread_id, owner_id, source_file_ids, process_family_override))
     logger.info("Worker completed 'task_start_workflow'", extra={"thread_id": thread_id, "owner_id": owner_id, "event": "worker_complete", "status": res})
     return res
 

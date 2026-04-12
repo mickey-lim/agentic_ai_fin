@@ -16,8 +16,8 @@ class PayrollAdapter(BaseAdapter):
         if target_path and pathlib.Path(target_path).exists():
             if target_path.endswith(".csv"): return pd.read_csv(target_path)
             if target_path.endswith(".pdf"):
-                from src.agentic_poc.utils.pdf_parser import parse_pdf_to_dataframe
-                return parse_pdf_to_dataframe(target_path)
+                from src.agentic_poc.utils.document_parser import parse_document_to_dataframe
+                return parse_document_to_dataframe(target_path, domain="payroll")
             return pd.read_excel(target_path)
             
         # Fallback to fixture for test robustness

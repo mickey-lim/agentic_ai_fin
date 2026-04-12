@@ -39,7 +39,7 @@ def test_full_upload_to_summary_e2e(client: TestClient):
     # blocking until completed (or interrupted).
     start_payload = {
         "input_request": "보조금 정산 검토해줘.",
-        "source_file_id": file_id
+        "source_file_ids": [file_id]
     }
     res_start = client.post(
         "/workflows/start",
@@ -63,12 +63,17 @@ def test_full_upload_to_summary_e2e(client: TestClient):
     import sqlite3
     with sqlite3.connect(settings.REGISTRY_DB_PATH) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT workflow_id, status, source_file_id FROM workflow_registry WHERE thread_id = ?", (thread_id,))
+        # source_file_id column is deprecated in workflow_registry, verify via join table
+        cursor.execute("SELECT workflow_id, status FROM workflow_registry WHERE thread_id = ?", (thread_id,))
         row = cursor.fetchone()
         assert row is not None
-        workflow_id, status, db_source_file_id = row
-        assert db_source_file_id == file_id
-        assert status in ["completed", "interrupted"]
+        workflow_id, status = row
+        
+        cursor.execute("SELECT file_id FROM workflow_source_files WHERE thread_id = ?", (thread_id,))
+        source_rows = cursor.fetchall()
+        db_source_file_ids = [r[0] for r in source_rows]
+        assert file_id in db_source_file_ids
+    assert status in ["completed", "interrupted"]
         
     # 5. Assert Artifact Hardening
     # ensure artifacts/evidence and artifacts/package contains exactly what's expected.
@@ -149,7 +154,7 @@ def test_duplicate_upload_retains_history(client: TestClient):
 
 from unittest.mock import patch
 
-@patch('src.agentic_poc.utils.pdf_parser.parse_pdf_to_dataframe')
+@patch('src.agentic_poc.utils.document_parser.parse_document_to_dataframe')
 def test_full_upload_to_summary_e2e_pdf_synonyms(mock_parse_pdf, client: TestClient):
     """
     E2E Test for PDF integration and Column Normalization logic.
@@ -182,7 +187,7 @@ def test_full_upload_to_summary_e2e_pdf_synonyms(mock_parse_pdf, client: TestCli
     # 3. Trigger workflow using a treasury-related prompt
     start_payload = {
         "input_request": "지출결의서 부가세 검토해줘",
-        "source_file_id": file_id
+        "source_file_ids": [file_id]
     }
     res_start = client.post(
         "/workflows/start",
@@ -252,7 +257,7 @@ def test_full_upload_to_summary_e2e_pdf_real_non_mocked(client: TestClient):
     # 2. Trigger workflow using a treasury-related prompt
     start_payload = {
         "input_request": "부서지출결의서 부가세 검증해", # should route to treasury
-        "source_file_id": file_id
+        "source_file_ids": [file_id]
     }
     res_start = client.post(
         "/workflows/start",
@@ -308,7 +313,7 @@ def test_full_upload_to_summary_e2e_pdf_real_grant(client: TestClient):
     assert res.status_code == 201
     file_id = res.json()["file_id"]
 
-    res_start = client.post("/workflows/start", headers={"Authorization": f"Bearer {VALID_TOKEN}"}, json={"input_request": "보조금 내역 확인해봐", "source_file_id": file_id})
+    res_start = client.post("/workflows/start", headers={"Authorization": f"Bearer {VALID_TOKEN}"}, json={"input_request": "보조금 내역 확인해봐", "source_file_ids": [file_id]})
     assert res_start.status_code == 202
     thread_id = res_start.json()["job_id"]
 
@@ -354,7 +359,7 @@ def test_full_upload_to_summary_e2e_pdf_real_payroll(client: TestClient):
     assert res.status_code == 201
     file_id = res.json()["file_id"]
 
-    res_start = client.post("/workflows/start", headers={"Authorization": f"Bearer {VALID_TOKEN}"}, json={"input_request": "급여대장 총액 검토해줘", "source_file_id": file_id})
+    res_start = client.post("/workflows/start", headers={"Authorization": f"Bearer {VALID_TOKEN}"}, json={"input_request": "급여대장 총액 검토해줘", "source_file_ids": [file_id]})
     assert res_start.status_code == 202
     thread_id = res_start.json()["job_id"]
 
@@ -396,7 +401,7 @@ def test_full_upload_to_summary_e2e_pdf_real_withholding(client: TestClient):
     assert res.status_code == 201
     file_id = res.json()["file_id"]
 
-    res_start = client.post("/workflows/start", headers={"Authorization": f"Bearer {VALID_TOKEN}"}, json={"input_request": "원천세 납부서 검토해", "source_file_id": file_id})
+    res_start = client.post("/workflows/start", headers={"Authorization": f"Bearer {VALID_TOKEN}"}, json={"input_request": "원천세 납부서 검토해", "source_file_ids": [file_id]})
     assert res_start.status_code == 202
     thread_id = res_start.json()["job_id"]
 

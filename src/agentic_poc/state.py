@@ -18,7 +18,7 @@ class AgentState(TypedDict):
     process_family: str
     submission_channel: str
     legal_owner: str
-    source_file_id: Optional[str]
+    source_file_ids: List[str]
     process_family_override: Optional[str]
     tasks: List[Dict[str, Any]]
     results: Annotated[List[Dict[str, Any]], operator.add]

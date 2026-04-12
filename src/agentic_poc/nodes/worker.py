@@ -57,20 +57,33 @@ def worker_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                         evidence_dir = pathlib.Path("./artifacts/evidence")
                         evidence_dir.mkdir(parents=True, exist_ok=True)
                         
-                        source_file_id = state.get("source_file_id")
-                        df = adapter.collect(source_file_id)
+                        source_file_ids = state.get("source_file_ids", [])
+                        dfs = []
+                        parser_types = []
+                        
+                        if not source_file_ids:
+                            df = adapter.collect(None)
+                            parser_types.append("excel/csv")
+                        else:
+                            for fid in source_file_ids:
+                                df_part = adapter.collect(fid)
+                                df_part["_source_file_id"] = fid
+                                parser_types.append(getattr(df_part, "attrs", {}).get("parser_type", "excel/csv"))
+                                dfs.append(df_part)
+                            df = pd.concat(dfs, ignore_index=True) if dfs else adapter.collect(None)
+                            
                         df.to_excel(target_file, index=False)
                         
                         output_data["collected_path"] = str(target_file)
                         evidence_list.append(str(target_file))
-                        parser_type = getattr(df, "attrs", {}).get("parser_type", "excel/csv")
                         
                         # Preserve existing provenance, update with sequence logic
                         current_prov = dict(state.get("provenance", {}))
+                        final_parser_type = ",".join(list(set(parser_types))) if parser_types else "excel/csv"
                         current_prov.update({
                             "adapter": adapter.adapter_id, 
                             "operation": "collect",
-                            "parser_type": parser_type
+                            "parser_type": final_parser_type
                         })
                         output_data["provenance"] = current_prov
                         
@@ -168,8 +181,11 @@ def worker_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
                         output_data["provenance"] = current_prov
 
                 except Exception as e:
+                    import traceback
+                    tb_str = traceback.format_exc()
+                    print(f"Exception during task {t['task_id']}:\n{tb_str}")
                     status = Status.FAILED.value
-                    output_data["error"] = str(e)
+                    output_data["error"] = f"{str(e)}\n\n{tb_str}"
                     error_count += 1
                 
                 res = {

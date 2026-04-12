@@ -53,6 +53,16 @@ async def init_registry() -> None:
             )
         """)
         
+        # M:N File Relation
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS workflow_source_files (
+                thread_id TEXT,
+                file_id TEXT,
+                sort_order INTEGER,
+                PRIMARY KEY (thread_id, file_id)
+            )
+        """)
+        
         # Backward compatibility for existing DBs
         try:
             await db.execute("ALTER TABLE workflow_registry ADD COLUMN source_file_id TEXT")
@@ -105,6 +115,7 @@ async def upsert_workflow(
     process_family: str = "",
     input_request_summary: str = "",
     source_file_id: str = "",
+    source_file_ids: Optional[List[str]] = None,
     last_error: str = ""
 ) -> None:
     """
@@ -169,6 +180,11 @@ async def upsert_workflow(
             query = f"UPDATE workflow_registry SET {', '.join(updates)} WHERE thread_id = ?"
             await db.execute(query, params)
             
+        if source_file_ids is not None:
+            await db.execute("DELETE FROM workflow_source_files WHERE thread_id = ?", (thread_id,))
+            for i, fid in enumerate(source_file_ids):
+                await db.execute("INSERT INTO workflow_source_files (thread_id, file_id, sort_order) VALUES (?, ?, ?)", (thread_id, fid, i))
+                
         await db.commit()
 
 async def get_workflow_metrics(owner_id: str) -> Dict[str, int]:
@@ -208,14 +224,14 @@ async def get_workflows(owner_id: str, status_filter: Optional[str] = None, limi
     async with aiosqlite.connect(REGISTRY_DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         
-        query = "SELECT * FROM workflow_registry WHERE owner_id = ?"
+        query = "SELECT w.*, (SELECT GROUP_CONCAT(file_id) FROM workflow_source_files WHERE thread_id = w.thread_id ORDER BY sort_order) as source_file_ids FROM workflow_registry w WHERE w.owner_id = ?"
         params = [owner_id]
         
         if not include_deleted:
-            query += " AND status NOT IN ('deleted', 'purging', 'purged')"
+            query += " AND w.status NOT IN ('deleted', 'purging', 'purged')"
             
         if status_filter:
-            query += " AND status = ?"
+            query += " AND w.status = ?"
             params.append(status_filter)
             
         if cursor:
@@ -223,15 +239,23 @@ async def get_workflows(owner_id: str, status_filter: Optional[str] = None, limi
             parts = cursor.split('|', 1)
             if len(parts) == 2:
                 c_updated_at, c_thread_id = parts
-                query += " AND (updated_at < ? OR (updated_at = ? AND thread_id < ?))"
+                query += " AND (w.updated_at < ? OR (w.updated_at = ? AND w.thread_id < ?))"
                 params.extend([c_updated_at, c_updated_at, c_thread_id])
                 
-        query += " ORDER BY updated_at DESC, thread_id DESC LIMIT ?"
+        query += " ORDER BY w.updated_at DESC, w.thread_id DESC LIMIT ?"
         params.append(limit)
         
         async with db.execute(query, params) as cursor:
             rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            results = []
+            for r in rows:
+                r_dict = dict(r)
+                if r_dict.get("source_file_ids"):
+                    r_dict["source_file_ids"] = r_dict["source_file_ids"].split(",")
+                else:
+                    r_dict["source_file_ids"] = []
+                results.append(r_dict)
+            return results
 
 async def soft_delete_workflow(thread_id: str, owner_id: str, reason: str = "User deleted via UI") -> bool:
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
