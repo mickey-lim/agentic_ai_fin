@@ -148,6 +148,11 @@ async def async_cleanup_artifacts():
                 WHERE status IN ('running', 'interrupted') 
                 AND source_file_id IS NOT NULL 
                 AND source_file_id != ''
+                UNION
+                SELECT wsf.file_id 
+                FROM workflow_registry w
+                JOIN workflow_source_files wsf ON w.thread_id = wsf.thread_id
+                WHERE w.status IN ('running', 'interrupted')
             )
         """
         async with db.execute(query, (target_iso,)) as cursor:

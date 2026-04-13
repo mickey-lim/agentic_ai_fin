@@ -95,7 +95,9 @@ class FileUploadResponse(BaseModel):
 ALLOWED_MIME_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
     "text/csv",
-    "application/pdf"
+    "application/pdf",
+    "image/jpeg",
+    "image/png"
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024 # 10MB
 
@@ -104,11 +106,15 @@ MAX_FILE_SIZE = 10 * 1024 * 1024 # 10MB
 async def api_upload_file(request: Request, file: UploadFile = File(...), user: str = Depends(verify_token)):
     ext = file.filename.lower()
     
+    logger.info(f"UPLOAD RECEIVED: filename={file.filename}, content_type={file.content_type}")
+    
     if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid MIME type. Only Excel, CSV, and PDF are allowed.")
+        logger.error(f"Invalid MIME type: {file.content_type} for file {file.filename}")
+        raise HTTPException(status_code=400, detail=f"Invalid MIME type: {file.content_type}. Excel, CSV, PDF and Image receipts (.jpg, .png) are allowed.")
         
-    if not (ext.endswith(".xlsx") or ext.endswith(".csv") or ext.endswith(".pdf")):
-        raise HTTPException(status_code=400, detail="Invalid extension. Only .xlsx, .csv, and .pdf are allowed.")
+    if not (ext.endswith(".xlsx") or ext.endswith(".csv") or ext.endswith(".pdf") or ext.endswith(".jpg") or ext.endswith(".jpeg") or ext.endswith(".png")):
+        logger.error(f"Invalid extension for file {file.filename}")
+        raise HTTPException(status_code=400, detail=f"Invalid extension. Only .xlsx, .csv, .pdf, .jpg, .jpeg, .png are allowed.")
     
     file_id = f"upl_{uuid.uuid4()}"
     uploads_dir = pathlib.Path("./artifacts/uploads")
@@ -156,7 +162,8 @@ async def api_upload_file(request: Request, file: UploadFile = File(...), user: 
 
 @app.get("/workflows/uploads", status_code=200)
 @limiter.limit("20/minute")
-async def api_get_uploads(request: Request, user: str = Depends(verify_token)):
+async def api_get_uploads(response: Response, request: Request, user: str = Depends(verify_token)):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     try:
         from src.agentic_poc.registry import get_recent_uploads
         uploads = await get_recent_uploads(user)
@@ -215,16 +222,15 @@ async def api_start_workflow(req: StartRequest, request: Request, user: str = De
 @app.get("/workflows", status_code=200)
 @limiter.limit("20/minute")
 async def api_list_workflows(
+    response: Response,
     request: Request, 
     status: Optional[str] = None, 
     limit: int = 50, 
     cursor: Optional[str] = None, 
     include_deleted: bool = False,
-    response: Response = None,
     user: str = Depends(verify_token)
 ):
-    if response:
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     try:
         results = await get_workflows(user, status, limit, cursor, include_deleted=include_deleted)
         

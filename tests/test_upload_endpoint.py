@@ -75,3 +75,15 @@ def test_upload_path_traversal_prevention(client: TestClient):
     import pathlib
     assert not pathlib.Path("evil.xlsx").exists()
     assert not pathlib.Path("../../evil.xlsx").exists()
+
+def test_upload_success_image(client: TestClient):
+    file_content = b"fake jpeg bytes"
+    res = client.post(
+        "/workflows/upload",
+        headers={"Authorization": f"Bearer {VALID_TOKEN}"},
+        files={"file": ("receipt.jpg", BytesIO(file_content), "image/jpeg")}
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert "file_id" in data
+    assert data["filename"] == "receipt.jpg"

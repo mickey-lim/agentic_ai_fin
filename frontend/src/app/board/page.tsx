@@ -38,6 +38,8 @@ export default function BoardPage() {
   const [selectedHistoryFile, setSelectedHistoryFile] = useState<{file_id: string, original_filename: string, size_bytes: number} | null>(null);
   const [processFamilyOverride, setProcessFamilyOverride] = useState<string>("auto");
   const [isStarting, setIsStarting] = useState(false);
+  const [startingMessage, setStartingMessage] = useState("");
+  const [uploadingFileIndex, setUploadingFileIndex] = useState<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
   // Metrics
@@ -318,13 +320,18 @@ export default function BoardPage() {
     }
 
     setIsStarting(true);
+    setStartingMessage("작업 초기화 중...");
+    setUploadingFileIndex(null);
     setErrorMsg(null);
 
     try {
       const source_file_ids: string[] = [];
       
       if (selectedFiles.length > 0) {
-        for (const file of selectedFiles) {
+        for (let i = 0; i < selectedFiles.length; i++) {
+            const file = selectedFiles[i];
+            setUploadingFileIndex(i);
+            setStartingMessage(`증빙 자료 업로드 중 (${i + 1}/${selectedFiles.length})`);
             const formData = new FormData();
             formData.append("file", file);
             const upRes = await fetch(`${API_BASE}/workflows/upload`, {
@@ -348,6 +355,7 @@ export default function BoardPage() {
             source_file_ids.push(upData.file_id);
         }
         fetchRecentUploads();
+        setUploadingFileIndex(null);
       } else if (selectedHistoryFile) {
         source_file_ids.push(selectedHistoryFile.file_id);
       }
@@ -359,6 +367,8 @@ export default function BoardPage() {
       } = { input_request: inputRequest };
       if (source_file_ids.length > 0) payload.source_file_ids = source_file_ids;
       if (processFamilyOverride !== "auto") payload.process_family_override = processFamilyOverride;
+
+      setStartingMessage("AI 분석 및 워크플로우 대기열 등록 중...");
 
       const res = await fetch(`${API_BASE}/workflows/start`, {
         method: "POST",
@@ -375,7 +385,23 @@ export default function BoardPage() {
       setInputRequest("");
       setSelectedFiles([]);
       setSelectedHistoryFile(null);
-      // Immediately refresh queue to show the new record
+      
+      // OPTIMISTIC UPDATE: Inject the new workflow into state immediately to avoid
+      // asynchronous race conditions with the E2E framework relying on UI presence
+      const newCard: RegistryRow = {
+          thread_id: data.job_id,
+          workflow_id: null,
+          owner_id: "finance_manager_1",
+          status: "running", // Backend will set it to 'running' mostly initially
+          next_task: null,
+          process_family: "unclassified",
+          input_request_summary: inputRequest.substring(0, 50),
+          last_error: null,
+          updated_at: new Date().toISOString()
+      };
+      setWorkflows(prev => [newCard, ...prev]);
+
+      // Immediately refresh queue to show the new record and full DB sync later
       fetchQueue(true);
       // Auto-select the newly started workflow
       setSelectedThreadId(data.job_id);
@@ -383,6 +409,8 @@ export default function BoardPage() {
       setErrorMsg((e as Error).message);
     } finally {
       setIsStarting(false);
+      setStartingMessage("");
+      setUploadingFileIndex(null);
     }
   };
 
@@ -501,12 +529,12 @@ export default function BoardPage() {
                             <div className="flex gap-2">
                                 <label
                                     className="relative flex w-[40px] shrink-0 cursor-pointer items-center justify-center border border-gray-300 bg-white p-2 text-gray-400 shadow-sm transition-colors hover:bg-indigo-50 hover:text-indigo-600"
-                                    title="첨부파일 (엑셀/CSV/PDF텍스트만 가능. 파일 Drag & Drop 지원)"
+                                    title="첨부파일 (엑셀/CSV/PDF, 파일 Drag & Drop 및 이미지 영수증 지원)"
                                 >
                                     <input
                                         type="file"
                                         className="hidden"
-                                        accept=".xlsx,.csv,.pdf"
+                                        accept=".xlsx,.csv,.pdf,.jpg,.jpeg,.png"
                                         multiple
                                         onChange={(e) => {
                                             if (e.target.files) {
@@ -540,9 +568,19 @@ export default function BoardPage() {
                                 <button
                                     type="submit"
                                     disabled={isStarting || !inputRequest}
-                                    className="flex items-center bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:bg-gray-400"
+                                    className="flex items-center bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:bg-gray-400 whitespace-nowrap"
                                 >
-                                    {isStarting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
+                                    {isStarting ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                            실행 중
+                                        </>
+                                    ) : (
+                                        <>
+                                            <PlayCircle className="h-4 w-4 mr-2" />
+                                            업로드 및 분석 실행
+                                        </>
+                                    )}
                                 </button>
                             </div>
 
@@ -559,8 +597,10 @@ export default function BoardPage() {
                                     {selectedFiles.map((f, idx) => (
                                         <div key={idx} className="flex flex-row flex-wrap items-center justify-between pb-1">
                                             <div className="flex items-center gap-2 overflow-hidden">
-                                                {isStarting ? (
-                                                    <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                                                {isStarting && uploadingFileIndex === idx ? (
+                                                    <Loader2 className="h-3 w-3 shrink-0 animate-spin text-indigo-600" />
+                                                ) : isStarting && (uploadingFileIndex === null || idx < uploadingFileIndex) ? (
+                                                    <ShieldCheck className="h-3 w-3 shrink-0 text-emerald-500" />
                                                 ) : (
                                                     <Paperclip className="h-3 w-3 shrink-0 text-indigo-500" />
                                                 )}
@@ -606,9 +646,9 @@ export default function BoardPage() {
                                 </div>
                             )}
 
-                            {isStarting && (selectedFiles.length > 0 || selectedHistoryFile) && (
+                            {isStarting && (
                                 <p className="animate-pulse text-xs font-medium text-indigo-600">
-                                    데이터 업로드 및 워크플로우 대기열 등록 중...
+                                    {startingMessage}
                                 </p>
                             )}
                         </form>
@@ -728,6 +768,8 @@ export default function BoardPage() {
                         <div 
                             key={wf.thread_id} 
                             onClick={() => setSelectedThreadId(wf.thread_id)}
+                            data-testid="workflow-card"
+                            data-thread-id={wf.thread_id}
                             className={`p-4 pl-12 border bg-white cursor-pointer transition-all relative ${selectedThreadId === wf.thread_id ? 'border-indigo-500 ring-1 ring-indigo-500 shadow-md' : 'border-gray-200 hover:border-gray-300 shadow-sm hover:shadow-md'}`}
                         >
                             <div className="absolute left-4 top-4" onClick={(e) => e.stopPropagation()}>
@@ -758,15 +800,22 @@ export default function BoardPage() {
                                 </button>
                             )}
                             <div className="flex justify-between items-start mb-2 pr-6">
-                                <span className={`text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-sm ${
-                                    wf.status === 'interrupted' ? 'bg-blue-100 text-blue-700' :
-                                    wf.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                    wf.status === 'error' ? 'bg-red-100 text-red-700' :
-                                    'bg-amber-100 text-amber-700'
-                                }`}>
-                                    {wf.status}
-                                </span>
-                                <span className="text-[10px] text-gray-400 uppercase font-mono">
+                                <div className="flex gap-2 items-center flex-wrap">
+                                    <span className={`text-[10px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-sm ${
+                                        wf.status === 'interrupted' ? 'bg-blue-100 text-blue-700' :
+                                        wf.status === 'completed' ? 'bg-green-100 text-green-700' :
+                                        wf.status === 'error' ? 'bg-red-100 text-red-700' :
+                                        'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {wf.status}
+                                    </span>
+                                    {wf.process_family && (
+                                        <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-sm border border-indigo-100" data-testid="process-family-badge">
+                                            {wf.process_family.toUpperCase()}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-gray-400 uppercase font-mono shrink-0">
                                     {wf.thread_id.split('-')[0]}
                                 </span>
                             </div>

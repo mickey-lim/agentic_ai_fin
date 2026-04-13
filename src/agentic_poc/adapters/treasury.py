@@ -15,7 +15,7 @@ class TreasuryAdapter(BaseAdapter):
         target_path = self.resolve_source_path(source_file_id)
         if target_path and pathlib.Path(target_path).exists():
             if target_path.endswith(".csv"): return pd.read_csv(target_path)
-            if target_path.endswith(".pdf"):
+            if target_path.endswith(".pdf") or target_path.endswith(".jpg") or target_path.endswith(".jpeg") or target_path.endswith(".png"):
                 from src.agentic_poc.utils.document_parser import parse_document_to_dataframe
                 return parse_document_to_dataframe(target_path, domain="treasury")
             return pd.read_excel(target_path)

@@ -26,7 +26,7 @@ test.describe('Multi-file Upload Smoke Test', () => {
       if (fs.existsSync(file1Path)) fs.unlinkSync(file1Path);
       if (fs.existsSync(file2Path)) fs.unlinkSync(file2Path);
       if (fs.existsSync(file3Path)) fs.unlinkSync(file3Path);
-    } catch (e) {}
+    } catch { }
   });
 
   test('should allow selecting multiple files, clearing, and uploading', async ({ page }) => {

@@ -161,7 +161,7 @@ def planner_node(state: AgentState, config: RunnableConfig) -> Dict[str, Any]:
         sc = SubmissionChannel.HOMETAX
         lo = LegalOwner.MANAGER
         ai_t = AIType.AI_ASSISTED
-    elif "비용" in req or "expense" in req or "지출의결" in req:
+    elif any(k in req for k in ["비용", "expense", "지출의결", "지출결의서", "영수증", "receipt", "영수"]):
         pf = ProcessFamily.EXPENSE
         sc = SubmissionChannel.MANUAL
         lo = LegalOwner.MANAGER

@@ -28,7 +28,7 @@ def extract_via_vlm(image_bytes: bytes, mime_type: str = "image/jpeg") -> pd.Dat
     Given image bytes, extracts receipt tabular data using Gemini Vision.
     Strictly enforced low temperature and structured output schema.
     """
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
     structured_llm = llm.with_structured_output(ReceiptParsingResult)
     
     encoded = base64.b64encode(image_bytes).decode("utf-8")
@@ -49,10 +49,6 @@ def extract_via_vlm(image_bytes: bytes, mime_type: str = "image/jpeg") -> pd.Dat
     # We call standard structured output
     result: ReceiptParsingResult = structured_llm.invoke([msg])
     
-    # Check low confidence
-    if result.confidence.lower() == "low" and not result.items:
-        raise ValueError("VLM returned low confidence and no items were extracted.")
-        
     df_data = []
     for item in result.items:
         df_data.append({
@@ -68,18 +64,7 @@ def extract_via_vlm(image_bytes: bytes, mime_type: str = "image/jpeg") -> pd.Dat
         })
         
     if not df_data:
-        # If no items but somehow didn't raise, push generic summary
-        df_data.append({
-            "일자": None,
-            "내용": f"{result.vendor} 영수증",
-            "수량": 1,
-            "단가": result.total_amount,
-            "금액": result.total_amount,
-            "구분": "VLM_INFERRED",
-            "_vendor": result.vendor,
-            "_total_inferred": result.total_amount,
-            "_vlm_confidence": result.confidence
-        })
+        raise ValueError(f"VLM returned no valid line items. Vendor: {result.vendor}, Total: {result.total_amount}. Confidence: {result.confidence}.")
         
     df = pd.DataFrame(df_data)
     df.attrs["parser_type"] = "vlm_receipt"
