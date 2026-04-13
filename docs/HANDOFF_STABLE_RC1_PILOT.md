@@ -13,6 +13,7 @@
 
 ### 📑 VLM/OCR 지원 범위 (멀티모달 파일럿 기대 모델)
 - 본 릴리스의 어댑터(`vlm_extractor`)는 기존의 텍스트 레이아웃 PDF 추출뿐만 아니라, **이미지 영수증(.jpg, .png) 및 스캔본 재무 문서의 파싱**을 공식 지원합니다.
+- 단, 현재 모델 체급 및 처리 구조상 VLM 처리는 **비용/자금(Expense/Treasury) 도메인의 영수증 및 지출결의서 판독에 한정**되어 최적화되어 있습니다. 범용 재무 스캔 문서는 지원하지 않습니다.
 - Gemini 2.5 Flash를 통한 멀티모달 비전 인식을 통해 단가, 수량, 금액, 판매처 등을 추출하며, 식별/판독 불가 시 억지 통과(Silent Pass) 대신 `Fail-closed`(인적 개입 요망)를 유도하도록 강력하게 보호되어 있습니다.
 - 단일 워크플로우에 여러 장의 영수증을 동시에 첨부하는 멀티-파일(Multi-file Drop) 인식을 지원합니다.
 
@@ -24,7 +25,7 @@
 
 ## 3. Current State & Tests
 - **현재 브랜치**: `main`
-- **최신 커밋**: `e8c5cd6 (docs(phase5): finalize v1.0-rc.1 documentation and hardening)`
+- **최신 커밋**: `43e0374` (docs: finalize v1.0 docs with multimodel VLM support and fail-closed mechanism)
 - **테스트 커버리지**: PyTest 기반 전체 유닛 테스트 및 Real-PDF 기반 무결성 E2E 100% 정상 통과
 
 ## 4. Next-Agent Prompt (다음 담당자 지시 사항)
