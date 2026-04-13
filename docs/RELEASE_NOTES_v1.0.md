@@ -17,6 +17,10 @@ v1.0 RC는 기존의 선형적인 데이터 처리 시스템에서 벗어나 **L
 3. **HITL (Human-in-the-Loop) 통제 콘솔**
    - 워크플로우 Interrupt 상태 감지 및 Draft Summary 제공.
    - 운영자의 명시적 판단(승인/반려/수동완료) 후 다음 Graph Node로 롤백 또는 포워딩하는 관측성 패널.
+3. **멀티모달 비전 문서 처리 (VLM OCR/Image Parser)**
+   - Gemini 2.5 Flash 기반의 이미지/스캔본 영수증 병합 처리.
+   - 단가/수량/금액 등의 세부 라인 아이템 파싱, 식별 실패 시 Fail-Closed(인적 개입 요망)를 유도하는 구조적 안전망 검증 완료.
+
 4. **배치 운영 체계 (Batch Ops)**
    - 다중 노드에 대한 일괄 승인/보류(Batch API), Soft Delete(휴지통 모드) 적용.
    - SQLite 동시성 로킹을 회피하는 물리적 `WAL(Write-Ahead Logging)` 적용.
@@ -31,8 +35,6 @@ v1.0 RC는 기존의 선형적인 데이터 처리 시스템에서 벗어나 **L
    - 사내 그룹웨어 전자결재 API나 외부 은행망(Firmbanking/Open API)과의 직접 통신은 제외. 현재는 파일 추출-결과물 ZIP 떨구기 형태의 Air-gapped 운영으로 제한됩니다.
 2. **대규모 Postgres Scale-out**
    - SQLite `WAL` 프라그마를 통해 병렬 Lock 현상을 해결했으나, 멀티 서버(다중 EC2 인스턴스) 간의 분산 DB 노리킹(Clustering)을 타겟으로 한 PostgreSQL/PGPool 마이그레이션은 제외되어 있습니다.
-3. **영수증 OCR / PDF 원본 비전 처리 (Vision OCR)**
-   - 이미지 기반 영수증이나 스캔본 PDF의 원시 Vision OCR 추출 프로세싱 보다는, 일차적으로 가공된 정형 텍스트나 추출 엑셀 테이블(T/B) 핸들링에 집중합니다.
 
 ---
 
